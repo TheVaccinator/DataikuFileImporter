@@ -213,7 +213,7 @@ class FileImporter:
         self._validate_inputs()
         self._import_files_without_concatenation()
         if self.concatenated:
-            self._import_and_concatenate_files()
+            self._concatenate_files()
 
     def _import_files_without_concatenation(self):
         """
@@ -281,7 +281,7 @@ class FileImporter:
         if len(self.result) == 1:
             self.result = list(self.result.values())[0]
 
-    def _import_and_concatenate_files(self, use_union: bool = False) -> pd.DataFrame:
+    def _concatenate_files(self, use_union: bool = False) -> pd.DataFrame:
         """
         Imports and concatenates files into a single DataFrame.
 
@@ -290,37 +290,36 @@ class FileImporter:
                         If False, use the intersection of columns shared by all DataFrames.
                         Default is False.
         """
-        if not isinstance(self.result, dict) or not all(
-            isinstance(df, pd.DataFrame) for df in self.result.values()
+        if (
+            (not isinstance(self.result, dict))
+            or (not self.result)
+            or (not all(isinstance(df, pd.DataFrame) for df in self.result.values()))
         ):
             return self.result
 
-        if use_union:
+        # Obtener los conjuntos de columnas
+        column_sets = [set(df.columns.tolist()) for df in self.result.values()]
+
+        if not column_sets:
+            return self.result
+        elif use_union:
             # Encontrar todas las columnas únicas presentes en los DataFrames
-            all_columns = sorted(
-                set(col for df in self.result.values() for col in df.columns)
-            )
+            all_columns = sorted(set.union(*column_sets))
         else:
             # Encontrar las columnas comunes presentes en todos los DataFrames
-            all_columns = sorted(
-                set.intersection(*(set(df.columns) for df in self.result.values()))
-            )
+            all_columns = sorted(set.intersection(*column_sets))
 
-        # Añadir la columna 'Origin' a cada DataFrame
-        for name, df in self.result.items():
-            df["Origin"] = name
-            # Reindexar para asegurarse de que todos los DataFrames tengan las columnas apropiadas
-            self.result[name] = df.reindex(columns=all_columns + ["Origin"])
+            # Añadir la columna 'Origin' a cada DataFrame
+            for name, df in self.result.items():
+                df["Origin"] = name
+                # Reindexar para asegurarse de que todos los DataFrames tengan las columnas apropiadas
+                self.result[name] = df.reindex(columns=all_columns + ["Origin"])
 
-        # Concatenar los DataFrames
+        # Concatenar los DataFrames que no están vacíos
         self.result_concatenated = pd.concat(
-            [df for df in self.result.values()],
+            [df for df in self.result.values() if not df.empty],
             ignore_index=True,
         )
-
-        # Verificación opcional de columnas
-        if any(len(df.columns) != len(all_columns) + 1 for df in self.result.values()):
-            print("Not all columns have been concatenated")
 
         return self.result_concatenated
 
@@ -334,72 +333,76 @@ class FileImporter:
         binary_mode: bool = False,
     ) -> Tuple[Union[pd.DataFrame, io.BytesIO], bool]:
 
-        imported = True
         try:
-            with folder.get_download_stream(file_name) as stream:
-                binary_file = stream.read()
-                binary_result = io.BytesIO(binary_file)
+            binary_file = FileImporter._read_file_from_sharepoint(folder, file_name)
+            binary_result = io.BytesIO(binary_file)
 
-                if binary_mode:
-                    return (binary_result, imported)
+            if binary_mode:
+                return (binary_result, True)
 
-                else:
-                    file_type = FileImporter.detect_file_type(binary_file)
-                    if file_type == "csv":
-                        encodings = ["utf-8", "latin1", "iso-8859-1", "cp1252"]
-                        for encoding in encodings:
-                            try:
-                                result = pd.read_csv(
-                                    binary_result,
-                                    encoding=encoding,
-                                    sep=sep,
-                                    header=0 if headers else None,
-                                )
-                                break
-                            except UnicodeDecodeError:
-                                imported = False
-                        else:
-                            imported = False
-                            raise ValueError(
-                                "Unable to decode the CSV file with common encodings."
-                            )
-                    elif file_type == "xls":
-                        result = pd.read_excel(
-                            binary_result,
-                            sheet_name=sheet,
-                            engine="xlrd",
-                            header=0 if headers else None,
-                        )
-                    elif file_type == "xlsx":
-                        result = pd.read_excel(
-                            binary_result,
-                            sheet_name=sheet,
-                            engine="openpyxl",
-                            header=0 if headers else None,
-                        )
-                    else:
-                        imported = False
-                        raise ValueError("Unsupported file type.")
-
-                print("Successfully imported the document from Sharepoint")
+            result = FileImporter._process_file(
+                binary_result, file_name, sheet, sep, headers
+            )
+            print("Successfully imported the document from Sharepoint")
+            return (result, True)
 
         except Exception as e:
-            imported = False
             raise Exception(f"Could not import the document from Sharepoint: {e}")
 
-        return (result, imported)
+    @staticmethod
+    def _read_file_from_sharepoint(folder: "dataiku.Folder", file_name: str) -> bytes:
+        try:
+            with folder.get_download_stream(file_name) as stream:
+                return stream.read()
+        except Exception as e:
+            raise Exception(f"Error reading file from Sharepoint: {e}")
+
+    @staticmethod
+    def _process_file(
+        binary_result: io.BytesIO,
+        file_name: str,
+        sheet: Optional[Union[str, int, Iterable[Optional[Union[str, int]]]]],
+        sep: str,
+        headers: bool,
+    ) -> pd.DataFrame:
+        file_type = FileImporter.detect_file_type(binary_result.getvalue())
+
+        if file_type == "csv":
+            return FileImporter._read_csv(binary_result, sep, headers)
+        elif file_type == "xls":
+            return pd.read_excel(
+                binary_result,
+                sheet_name=sheet,
+                engine="xlrd",
+                header=0 if headers else None,
+            )
+        elif file_type == "xlsx":
+            return pd.read_excel(
+                binary_result,
+                sheet_name=sheet,
+                engine="openpyxl",
+                header=0 if headers else None,
+            )
+        else:
+            raise ValueError("Unsupported file type.")
+
+    @staticmethod
+    def _read_csv(binary_result: io.BytesIO, sep: str, headers: bool) -> pd.DataFrame:
+        encodings = ["utf-8", "latin1", "iso-8859-1", "cp1252"]
+        for encoding in encodings:
+            try:
+                return pd.read_csv(
+                    binary_result,
+                    encoding=encoding,
+                    sep=sep,
+                    header=0 if headers else None,
+                )
+            except UnicodeDecodeError:
+                binary_result.seek(0)  # Reiniciar el stream para el siguiente intento
+        raise ValueError("Unable to decode the CSV file with common encodings.")
 
     @staticmethod
     def detect_file_type(binary_data: bytes) -> str:
-        """
-        Detects the file type based on the binary signature.
-
-        Args:
-        binary_data (bytes): The binary content of the file.
-
-        Returns:
-        str: The detected file type ('csv', 'xls', 'xlsx', or 'unknown').
-        """
         if binary_data.startswith(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"):
             return "xls"
         elif binary_data.startswith(b"\x50\x4B\x03\x04"):
@@ -408,35 +411,6 @@ class FileImporter:
             return "csv"
         else:
             return "unknown"
-
-    @staticmethod
-    def read_file_content(
-        file_path: str,
-        file_type: str,
-        headers: bool,
-        **kwargs,
-    ) -> pd.DataFrame:
-        """
-        Reads the content of a file and returns it as a DataFrame.
-
-        Args:
-        file_path (str): The path to the file.
-        file_type (str): The type of the file ('csv', 'xls', 'xlsx').
-        headers (bool): Indicates if the file has headers or not.
-        **kwargs: Additional arguments to pass to the pandas read functions.
-
-        Returns:
-        pd.DataFrame: The content of the file as a DataFrame.
-        """
-        header = 0 if headers else None
-        if file_type == "csv":
-            return pd.read_csv(file_path, header=header, **kwargs)
-        elif file_type == "xls":
-            return pd.read_excel(file_path, header=header, **kwargs, engine="xlrd")
-        elif file_type == "xlsx":
-            return pd.read_excel(file_path, header=header, **kwargs, engine="openpyxl")
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
 
     @staticmethod
     def import_file(
