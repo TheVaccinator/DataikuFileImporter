@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {},
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Python Debugger: Current File",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "${file}",
+                "console": "integratedTerminal",
+                "justMyCode": false,  // Esto te permitirá ver más detalles de tu código
+                "logToFile": true,
+                "redirectOutput": true,
+                "showReturnValue": true,  // Muestra los valores de retorno de las funciones.
+                "env": {
+                    "PYTHONIOENCODING": "utf-8",
+                    "PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "5"  // Añadido el timeout personalizado
+                }
+            }
+        ]
+    }
+}
