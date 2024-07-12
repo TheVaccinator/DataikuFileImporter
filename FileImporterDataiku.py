@@ -1,5 +1,4 @@
-from typing import Union, Optional, Tuple
-from collections.abc import Iterable
+from typing import Union, Optional, Tuple, List
 import copy
 import dataiku
 import pandas as pd
@@ -79,12 +78,10 @@ class FileImporter:
     def __init__(
         self,
         folder: dataiku.Folder,
-        names: Union[str, Iterable[str]],
-        file_paths: Optional[Iterable[str]] = None,
-        subfolders: Optional[Union[str, Iterable[Optional[Union[str, int]]]]] = None,
-        sheets: Optional[
-            Union[str, int, Iterable[Iterable[Optional[Union[str, int]]]]]
-        ] = 0,
+        names: Union[str, List[str]],
+        file_paths: Optional[List[str]] = None,
+        subfolders: Optional[Union[str, List[Optional[Union[str, int]]]]] = None,
+        sheets: Optional[Union[str, int, List[List[Optional[Union[str, int]]]]]] = 0,
         exact_match: bool = False,
         sep: str = ";",
         headers: bool = True,
@@ -154,27 +151,26 @@ class FileImporter:
                     "If a single file is specified, a single subfolder must also be specified."
                 )
             if not isinstance(self.sheets, (str, int, type(None))) and not (
-                isinstance(self.sheets, Iterable) and len(self.sheets) == 1
+                isinstance(self.sheets, List) and len(self.sheets) == 1
             ):
                 raise ValueError(
                     "If a single file is specified, a single sheet must be specified or a list with one element, that can be either a int, str or a sublist."
                 )
 
         # Verificación para listas de nombres, subcarpetas y hojas
-        if isinstance(self.names, Iterable):
-            if not isinstance(self.subfolders, (Iterable, str, type(None))):
+        if isinstance(self.names, List):
+            if not isinstance(self.subfolders, (List, str, type(None))):
                 raise ValueError(
                     "If a list of files is specified, subfolders must be either a list, a single subfolder, or None."
                 )
-            if isinstance(self.subfolders, Iterable) and len(self.subfolders) != len(
+            if isinstance(self.subfolders, List) and len(self.subfolders) != len(
                 self.names
             ):
                 raise ValueError(
                     "If a list of subfolders is provided, it must have the same length as the list of file names."
                 )
             if not isinstance(self.sheets, (str, int, type(None))) and not (
-                isinstance(self.sheets, Iterable)
-                and len(self.sheets) == len(self.names)
+                isinstance(self.sheets, List) and len(self.sheets) == len(self.names)
             ):
                 raise ValueError(
                     "If a list of files is specified, sheets must be either a single sheet, None, or a list of sheets with the same length as the list of file names."
@@ -226,40 +222,40 @@ class FileImporter:
                 self.names,
                 self.subfolders,
                 sheet=(
-                    self.sheets[0] if isinstance(self.sheets, Iterable) else self.sheets
+                    self.sheets[0] if isinstance(self.sheets, List) else self.sheets
                 ),
                 result=self.result,
             )
             if imported:
                 self.ficheros_no_encontrados.remove(self.names)
 
-        elif isinstance(self.names, Iterable) and len(self.names) == 1:
+        elif isinstance(self.names, List) and len(self.names) == 1:
             imported = import_file(
                 self.names[0],
                 self.subfolders,
                 sheet=(
-                    self.sheets[0] if isinstance(self.sheets, Iterable) else self.sheets
+                    self.sheets[0] if isinstance(self.sheets, List) else self.sheets
                 ),
                 result=self.result,
             )
             if imported:
                 self.ficheros_no_encontrados.remove(self.names[0])
 
-        elif isinstance(self.names, Iterable):
+        elif isinstance(self.names, List):
             for i, name in enumerate(self.names):
                 subfolder = (
                     self.subfolders
                     if isinstance(self.subfolders, str)
                     else (
                         self.subfolders[i]
-                        if isinstance(self.subfolders, Iterable)
+                        if isinstance(self.subfolders, List)
                         else None
                     )
                 )
                 sheet = (
                     self.sheets[i]
                     if (
-                        isinstance(self.sheets, Iterable)
+                        isinstance(self.sheets, List)
                         and len(self.sheets) == len(self.names)
                     )
                     else self.sheets
@@ -318,7 +314,7 @@ class FileImporter:
     def downloader(
         folder: "dataiku.Folder",
         file_name: str,
-        sheet: Optional[Union[str, int, Iterable[Optional[Union[str, int]]]]] = 0,
+        sheet: Optional[Union[str, int, List[Optional[Union[str, int]]]]] = 0,
         sep: str = ";",
         headers: bool = True,
         binary_mode: bool = False,
@@ -329,7 +325,7 @@ class FileImporter:
         Args:
             folder (dataiku.Folder): The Sharepoint folder from which the file is to be downloaded.
             file_name (str): The name of the file to be downloaded.
-            sheet (Union[str, int, Iterable[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file. Default is 0.
+            sheet (Union[str, int, List[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file. Default is 0.
             sep (str, optional): The separator to use when reading CSV files. Default is ";".
             headers (bool, optional): Indicates if the files have headers. Default is True.
             binary_mode (bool, optional): If True, unsupported file types will be stored as binary streams instead of being processed. Default is False.
@@ -382,7 +378,7 @@ class FileImporter:
     def _process_file(
         binary_result: io.BytesIO,
         file_name: str,
-        sheet: Optional[Union[str, int, Iterable[Optional[Union[str, int]]]]],
+        sheet: Optional[Union[str, int, List[Optional[Union[str, int]]]]],
         sep: str,
         headers: bool,
     ) -> pd.DataFrame:
@@ -392,7 +388,7 @@ class FileImporter:
         Args:
             binary_result (io.BytesIO): The binary stream of the file content.
             file_name (str): The name of the file.
-            sheet (Union[str, int, Iterable[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file.
+            sheet (Union[str, int, List[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file.
             sep (str): The separator to use when reading CSV files.
             headers (bool): Indicates if the files have headers.
 
@@ -479,10 +475,10 @@ class FileImporter:
     @staticmethod
     def import_file(
         folder: "dataiku.Folder",
-        file_paths: Iterable[str],
+        file_paths: List[str],
         file_name: str,
         subfolder: Optional[str] = None,
-        sheet: Optional[Union[str, int, Iterable[Optional[Union[str, int]]]]] = 0,
+        sheet: Optional[Union[str, int, List[Optional[Union[str, int]]]]] = 0,
         exact_match: bool = False,
         sep: str = ";",
         headers: bool = True,
@@ -496,10 +492,10 @@ class FileImporter:
 
         Args:
             folder (dataiku.Folder): The Sharepoint folder from which the file is to be imported.
-            file_paths (Iterable[str]): The list of file paths in the folder.
+            file_paths (List[str]): The list of file paths in the folder.
             file_name (str): The name of the file to be imported.
             subfolder (str, optional): The subfolder in which to search for the file. Default is None.
-            sheet (Union[str, int, Iterable[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file. Default is 0.
+            sheet (Union[str, int, List[Optional[Union[str, int]]]], optional): The sheet(s) to be imported from the file. Default is 0.
             exact_match (bool, optional): Indicates if the file names must exactly match the specified names. Default is False.
             sep (str, optional): The separator to use when reading CSV files. Default is ";".
             headers (bool, optional): Indicates if the files have headers. Default is True.
