@@ -89,13 +89,17 @@ class FileImporter:
         concatenated: bool = False,
         file_checker: bool = False,
         latest_match: bool = True,
+        skiprows: Optional[Union[int, List[int]]] = None,
     ):
         self.folder = folder
         self.file_paths = (
             file_paths if file_paths else self.folder.list_paths_in_partition()
         )
         self.names = names if names else None
-        self.subfolders = subfolders if subfolders else None
+        self.subfolders = [
+            "/" + subfolder if not subfolder.startswith("/") else subfolder
+            for subfolder in subfolders
+        ]
         self.sheets = sheets
         self.exact_match = exact_match
         self.sep = sep
@@ -104,6 +108,7 @@ class FileImporter:
         self.concatenated = concatenated
         self.file_checker = file_checker
         self.latest_match = latest_match
+        self.skiprows = skiprows
         self.ficheros_no_encontrados = (
             copy.deepcopy(names) if isinstance(names, list) else [names]
         )
@@ -150,6 +155,10 @@ class FileImporter:
                 raise ValueError(
                     "If a single file is specified, a single subfolder must also be specified."
                 )
+            if not isinstance(self.skiprows, (int, type(None))):
+                raise ValueError(
+                    "If a single file is specified, a single skiprows must also be specified."
+                )
             if not isinstance(self.sheets, (str, int, type(None))) and not (
                 isinstance(self.sheets, List) and len(self.sheets) == 1
             ):
@@ -168,6 +177,12 @@ class FileImporter:
             ):
                 raise ValueError(
                     "If a list of subfolders is provided, it must have the same length as the list of file names."
+                )
+            if isinstance(self.skiprows, List) and len(self.skiprows) != len(
+                self.names
+            ):
+                raise ValueError(
+                    "If a list of skiprows is provided, it must have the same length as the list of file names."
                 )
             if not isinstance(self.sheets, (str, int, type(None))) and not (
                 isinstance(self.sheets, List) and len(self.sheets) == len(self.names)
@@ -200,7 +215,13 @@ class FileImporter:
         """
         self.result = {}
 
-        def import_file(name, subfolder=None, sheet=None, result=None):
+        def import_file(
+            name,
+            subfolder=None,
+            sheet=None,
+            result=None,
+            skiprows=None,
+        ):
             imported = FileImporter.import_file(
                 folder=self.folder,
                 file_paths=self.file_paths,
@@ -214,27 +235,38 @@ class FileImporter:
                 file_checker=self.file_checker,
                 latest_match=self.latest_match,
                 result=result,
+                skiprows=skiprows,
             )
             return imported
 
         if isinstance(self.names, str):
             imported = import_file(
-                self.names,
-                self.subfolders,
+                file_name=self.names,
+                subfolder=self.subfolders,
                 sheet=(
-                    self.sheets[0] if isinstance(self.sheets, List) else self.sheets
+                    self.sheets[0] if isinstance(self.sheets, list) else self.sheets
                 ),
                 result=self.result,
+                skiprows=self.skiprows,
             )
             if imported:
                 self.ficheros_no_encontrados.remove(self.names)
 
         elif isinstance(self.names, List) and len(self.names) == 1:
             imported = import_file(
-                self.names[0],
-                self.subfolders,
+                file_name=self.names[0],
+                subfolder=(
+                    self.subfolders[0]
+                    if isinstance(self.subfolders, list)
+                    else self.subfolders
+                ),
+                skiprows=(
+                    self.skiprows[0]
+                    if isinstance(self.skiprows, list)
+                    else self.skiprows
+                ),
                 sheet=(
-                    self.sheets[0] if isinstance(self.sheets, List) else self.sheets
+                    self.sheets[0] if isinstance(self.sheets, list) else self.sheets
                 ),
                 result=self.result,
             )
@@ -248,9 +280,20 @@ class FileImporter:
                     if isinstance(self.subfolders, str)
                     else (
                         self.subfolders[i]
-                        if isinstance(self.subfolders, List)
+                        if isinstance(self.subfolders, list)
                         else None
                     )
+                )
+                skiprows = (
+                    (
+                        self.skiprows
+                        if isinstance(self.skiprows, int)
+                        else (
+                            self.skiprows[i]
+                            if isinstance(self.subfolders, list)
+                            else None
+                        )
+                    ),
                 )
                 sheet = (
                     self.sheets[i]
@@ -261,7 +304,13 @@ class FileImporter:
                     else self.sheets
                 )
 
-                imported = import_file(name, subfolder, sheet, result=self.result)
+                imported = import_file(
+                    file_name=name,
+                    subfolder=subfolder,
+                    skiprows=skiprows,
+                    sheet=sheet,
+                    result=self.result,
+                )
                 if imported:
                     self.ficheros_no_encontrados.remove(name)
 
@@ -318,6 +367,7 @@ class FileImporter:
         sep: str = ";",
         headers: bool = True,
         binary_mode: bool = False,
+        skiprows: Optional[int] = None,
     ) -> Tuple[Union[pd.DataFrame, io.BytesIO], bool]:
         """
         Downloads a file from a Sharepoint folder and processes it based on the file type.
@@ -342,7 +392,12 @@ class FileImporter:
                 return (binary_result, True)
 
             result = FileImporter._process_file(
-                binary_result, file_name, sheet, sep, headers
+                binary_result,
+                file_name,
+                sheet,
+                sep,
+                headers,
+                skiprows,
             )
             print("Successfully imported the document from Sharepoint")
             return (result, True)
@@ -381,6 +436,7 @@ class FileImporter:
         sheet: Optional[Union[str, int, List[Optional[Union[str, int]]]]],
         sep: str,
         headers: bool,
+        skiprows: Optional[int] = None,
     ) -> pd.DataFrame:
         """
         Processes a binary file stream and returns a DataFrame based on the file type.
@@ -401,13 +457,19 @@ class FileImporter:
         file_type = FileImporter.detect_file_type(binary_result.getvalue())
 
         if file_type == "csv":
-            return FileImporter._read_csv(binary_result, sep, headers)
+            return FileImporter._read_csv(
+                binary_result,
+                sep,
+                headers,
+                skiprows,
+            )
         elif file_type == "xls":
             return pd.read_excel(
                 binary_result,
                 sheet_name=sheet,
                 engine="xlrd",
                 header=0 if headers else None,
+                skiprows=skiprows,
             )
         elif file_type == "xlsx":
             return pd.read_excel(
@@ -415,6 +477,7 @@ class FileImporter:
                 sheet_name=sheet,
                 engine="openpyxl",
                 header=0 if headers else None,
+                skiprows=skiprows,
             )
         else:
             raise ValueError("Unsupported file type.")
@@ -424,6 +487,7 @@ class FileImporter:
         binary_result: io.BytesIO,
         sep: str,
         headers: bool,
+        skiprows: Optional[int] = None,
     ) -> pd.DataFrame:
         """
         Reads a CSV file from a binary stream and returns a DataFrame.
@@ -447,6 +511,7 @@ class FileImporter:
                     encoding=encoding,
                     sep=sep,
                     header=0 if headers else None,
+                    skiprows=skiprows,
                 )
             except UnicodeDecodeError:
                 binary_result.seek(0)  # Reiniciar el stream para el siguiente intento
@@ -486,6 +551,7 @@ class FileImporter:
         file_checker: bool = True,
         latest_match: bool = True,
         result: Optional[dict] = None,
+        skiprows: Optional[int] = None,
     ) -> bool:
         """
         Imports a file from a Sharepoint folder based on specified parameters.
@@ -508,12 +574,23 @@ class FileImporter:
             bool: True if the file is successfully imported, False otherwise.
         """
         if exact_match:
-            files = [file for file in file_paths if file == file_name]
+            if subfolder:
+                files = [
+                    file
+                    for file in files
+                    if file.startswith(subfolder) and (file_name == file)
+                ]
+            else:
+                files = [file for file in file_paths if file_name == file]
         else:
-            files = [file for file in file_paths if file_name in file]
-
-        if subfolder:
-            files = [file for file in files if file.startswith(subfolder)]
+            if subfolder:
+                files = [
+                    file
+                    for file in files
+                    if file.startswith(subfolder) and (file_name in file)
+                ]
+            else:
+                files = [file for file in file_paths if file_name in file]
 
         if (not files) and (file_checker):
             raise FileNotFoundError("No file found matching the specified name")
@@ -542,6 +619,7 @@ class FileImporter:
                     sep,
                     headers,
                     binary_mode,
+                    skiprows=skiprows,
                 )
                 return imported
             else:
@@ -558,6 +636,7 @@ class FileImporter:
                     sep,
                     headers,
                     binary_mode,
+                    skiprows=skiprows,
                 )
                 counter += 1
 

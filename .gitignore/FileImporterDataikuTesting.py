@@ -521,12 +521,23 @@ class FileImporter:
             bool: True if the file is successfully imported, False otherwise.
         """
         if exact_match:
-            files = [file for file in file_paths if file == file_name]
+            if subfolder:
+                files = [
+                    file
+                    for file in files
+                    if file.startswith(subfolder) and (file_name == file)
+                ]
+            else:
+                files = [file for file in file_paths if file_name == file]
         else:
-            files = [file for file in file_paths if file_name in file]
-
-        if subfolder:
-            files = [file for file in files if file.startswith(subfolder)]
+            if subfolder:
+                files = [
+                    file
+                    for file in files
+                    if file.startswith(subfolder) and (file_name in file)
+                ]
+            else:
+                files = [file for file in file_paths if file_name in file]
 
         if (not files) and (file_checker):
             raise FileNotFoundError("No file found matching the specified name")
