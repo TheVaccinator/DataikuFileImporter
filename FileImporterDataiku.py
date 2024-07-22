@@ -96,10 +96,14 @@ class FileImporter:
             file_paths if file_paths else self.folder.list_paths_in_partition()
         )
         self.names = names if names else None
-        self.subfolders = [
-            "/" + subfolder if not subfolder.startswith("/") else subfolder
-            for subfolder in subfolders
-        ]
+        self.subfolders = (
+            [
+                "/" + subfolder if not subfolder.startswith("/") else subfolder
+                for subfolder in subfolders
+            ]
+            if isinstance(subfolders, list)
+            else subfolders
+        )
         self.sheets = sheets
         self.exact_match = exact_match
         self.sep = sep
@@ -241,7 +245,7 @@ class FileImporter:
 
         if isinstance(self.names, str):
             imported = import_file(
-                file_name=self.names,
+                name=self.names,
                 subfolder=self.subfolders,
                 sheet=(
                     self.sheets[0] if isinstance(self.sheets, list) else self.sheets
@@ -254,7 +258,7 @@ class FileImporter:
 
         elif isinstance(self.names, List) and len(self.names) == 1:
             imported = import_file(
-                file_name=self.names[0],
+                name=self.names[0],
                 subfolder=(
                     self.subfolders[0]
                     if isinstance(self.subfolders, list)
@@ -305,7 +309,7 @@ class FileImporter:
                 )
 
                 imported = import_file(
-                    file_name=name,
+                    name=name,
                     subfolder=subfolder,
                     skiprows=skiprows,
                     sheet=sheet,
