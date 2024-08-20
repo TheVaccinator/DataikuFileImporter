@@ -256,7 +256,7 @@ class FileImporter:
             if imported:
                 self.ficheros_no_encontrados.remove(self.names)
 
-        elif isinstance(self.names, List) and len(self.names) == 1:
+        elif isinstance(self.names, list) and len(self.names) == 1:
             imported = import_file(
                 name=self.names[0],
                 subfolder=(
@@ -277,7 +277,7 @@ class FileImporter:
             if imported:
                 self.ficheros_no_encontrados.remove(self.names[0])
 
-        elif isinstance(self.names, List):
+        elif isinstance(self.names, list):
             for i, name in enumerate(self.names):
                 subfolder = (
                     self.subfolders
@@ -289,20 +289,14 @@ class FileImporter:
                     )
                 )
                 skiprows = (
-                    (
-                        self.skiprows
-                        if isinstance(self.skiprows, int)
-                        else (
-                            self.skiprows[i]
-                            if isinstance(self.subfolders, list)
-                            else None
-                        )
-                    ),
+                    self.skiprows[i]
+                    if isinstance(self.skiprows, list)
+                    else self.skiprows
                 )
                 sheet = (
                     self.sheets[i]
                     if (
-                        isinstance(self.sheets, List)
+                        isinstance(self.sheets, list)
                         and len(self.sheets) == len(self.names)
                     )
                     else self.sheets
@@ -360,8 +354,6 @@ class FileImporter:
             [df for df in self.result.values() if not df.empty],
             ignore_index=True,
         )
-
-        return self.result_concatenated
 
     @staticmethod
     def downloader(
@@ -590,7 +582,7 @@ class FileImporter:
             if subfolder:
                 files = [
                     file
-                    for file in files
+                    for file in file_paths
                     if file.startswith(subfolder) and (file_name in file)
                 ]
             else:
