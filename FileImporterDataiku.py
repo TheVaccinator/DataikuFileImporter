@@ -90,6 +90,7 @@ class FileImporter:
         file_checker: bool = False,
         latest_match: bool = True,
         skiprows: Optional[Union[int, List[int]]] = None,
+        use_union: bool = False,
     ):
         self.folder = folder
         self.file_paths = (
@@ -113,6 +114,7 @@ class FileImporter:
         self.file_checker = file_checker
         self.latest_match = latest_match
         self.skiprows = skiprows
+        self.use_union = use_union
         self.ficheros_no_encontrados = (
             copy.deepcopy(names) if isinstance(names, list) else [names]
         )
@@ -315,7 +317,7 @@ class FileImporter:
         if len(self.result) == 1:
             self.result = list(self.result.values())[0]
 
-    def _concatenate_files(self, use_union: bool = False) -> pd.DataFrame:
+    def _concatenate_files(self,) -> pd.DataFrame:
         """
         Imports and concatenates files into a single DataFrame.
 
@@ -336,7 +338,7 @@ class FileImporter:
 
         if not column_sets:
             return self.result
-        elif use_union:
+        elif self.use_union:
             # Encontrar todas las columnas únicas presentes en los DataFrames
             all_columns = sorted(set.union(*column_sets))
         else:
